@@ -25,7 +25,6 @@ export async function GET() {
 
     let totalLinesAdded = 0
     let totalLinesDeleted = 0
-    let processedRepos = 0
     const maxRepos = 50 // Limit to prevent timeout
 
     // Process repositories in parallel batches
@@ -52,17 +51,17 @@ export async function GET() {
             })
 
             if (commitData.stats) {
-              repoAdded += commitData.stats.additions
-              repoDeleted += commitData.stats.deletions
+              repoAdded += commitData.stats.additions || 0
+              repoDeleted += commitData.stats.deletions || 0
             }
-          } catch (error) {
+          } catch {
             // Skip commits that fail (e.g., too large)
             console.log(`Skipping commit ${commit.sha}`)
           }
         }
 
         return { added: repoAdded, deleted: repoDeleted }
-      } catch (error) {
+      } catch {
         // Skip repos that fail
         console.log(`Skipping repo ${repo.name}`)
         return { added: 0, deleted: 0 }
@@ -84,10 +83,10 @@ export async function GET() {
       reposAnalyzed: Math.min(repos.length, maxRepos)
     })
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error fetching GitHub stats:", error)
     return NextResponse.json(
-      { error: error.message || "Failed to fetch GitHub stats" },
+      { error: error instanceof Error ? error.message : "Failed to fetch GitHub stats" },
       { status: 500 }
     )
   }
