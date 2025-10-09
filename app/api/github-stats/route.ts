@@ -50,9 +50,43 @@ export async function GET() {
               ref: commit.sha
             })
 
-            if (commitData.stats) {
-              repoAdded += commitData.stats.additions || 0
-              repoDeleted += commitData.stats.deletions || 0
+            // Filter out files from node_modules, vendor, build directories, etc.
+            if (commitData.files) {
+              const excludedPaths = [
+                'node_modules/',
+                'vendor/',
+                'dist/',
+                'build/',
+                '.next/',
+                'out/',
+                'target/',
+                'bin/',
+                'obj/',
+                'pkg/',
+                'packages/',
+                'bower_components/',
+                'pnpm-lock.yaml',
+                'package-lock.json',
+                'yarn.lock',
+                'Cargo.lock',
+                'Gemfile.lock',
+                'composer.lock',
+                'poetry.lock'
+              ]
+
+              commitData.files.forEach(file => {
+                // Check if file path starts with any excluded path
+                const isExcluded = excludedPaths.some(excluded => 
+                  file.filename.startsWith(excluded) || 
+                  file.filename.includes(`/${excluded}`) ||
+                  file.filename === excluded
+                )
+
+                if (!isExcluded) {
+                  repoAdded += file.additions || 0
+                  repoDeleted += file.deletions || 0
+                }
+              })
             }
           } catch {
             // Skip commits that fail (e.g., too large)
