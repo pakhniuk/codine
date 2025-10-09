@@ -35,7 +35,7 @@ export async function GET() {
           owner: repo.owner.login,
           repo: repo.name,
           author: user.login,
-          per_page: 100
+          per_page: 200
         })
 
         let repoAdded = 0
