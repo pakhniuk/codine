@@ -1,128 +1,86 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { Octokit } from "@octokit/rest"
+import pLimit from "p-limit"
 
 export async function GET() {
   try {
     const session = await auth()
-    
     if (!session?.accessToken) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const octokit = new Octokit({
-      auth: session.accessToken
-    })
-
-    // Get authenticated user
+    const octokit = new Octokit({ auth: session.accessToken })
     const { data: user } = await octokit.users.getAuthenticated()
-    
-    // Get all repositories
+
+    // Get all user repositories
     const { data: repos } = await octokit.repos.listForAuthenticatedUser({
       per_page: 100,
-      sort: "updated"
+      sort: "updated",
     })
 
-    let totalLinesAdded = 0
-    let totalLinesDeleted = 0
-    const maxRepos = 50 // Limit to prevent timeout
+    // --- CONFIG ---
+    const maxRepos = 100 // safe limit
+    const concurrencyLimit = 5
+    const limit = pLimit(concurrencyLimit)
 
-    // Process repositories in parallel batches
-    const repoPromises = repos.slice(0, maxRepos).map(async (repo) => {
-      try {
-        // Get all commits by the user in this repo
-        const { data: commits } = await octokit.repos.listCommits({
-          owner: repo.owner.login,
-          repo: repo.name,
-          author: user.login,
-          per_page: 200
-        })
+    let totalAdditions = 0
+    let totalDeletions = 0
+    let reposProcessed = 0
 
-        let repoAdded = 0
-        let repoDeleted = 0
+    // --- PROCESS REPOS IN PARALLEL (LIMITED) ---
+    const repoPromises = repos.slice(0, maxRepos).map((repo) =>
+      limit(async () => {
+        try {
+          const { data: stats } = await octokit.repos.getContributorsStats({
+            owner: repo.owner.login,
+            repo: repo.name,
+          })
 
-        // Process commits in smaller batches to avoid rate limits
-        for (const commit of commits.slice(0, 30)) {
-          try {
-            const { data: commitData } = await octokit.repos.getCommit({
-              owner: repo.owner.login,
-              repo: repo.name,
-              ref: commit.sha
-            })
-
-            // Filter out files from node_modules, vendor, build directories, etc.
-            if (commitData.files) {
-              const excludedPaths = [
-                'node_modules/',
-                'vendor/',
-                'dist/',
-                'build/',
-                '.next/',
-                'out/',
-                'target/',
-                'bin/',
-                'obj/',
-                'pkg/',
-                'packages/',
-                'bower_components/',
-                'pnpm-lock.yaml',
-                'package-lock.json',
-                'yarn.lock',
-                'Cargo.lock',
-                'Gemfile.lock',
-                'composer.lock',
-                'poetry.lock'
-              ]
-
-              commitData.files.forEach(file => {
-                // Check if file path starts with any excluded path
-                const isExcluded = excludedPaths.some(excluded => 
-                  file.filename.startsWith(excluded) || 
-                  file.filename.includes(`/${excluded}`) ||
-                  file.filename === excluded
-                )
-
-                if (!isExcluded) {
-                  repoAdded += file.additions || 0
-                  repoDeleted += file.deletions || 0
-                }
-              })
-            }
-          } catch {
-            // Skip commits that fail (e.g., too large)
-            console.log(`Skipping commit ${commit.sha}`)
+          // GitHub sometimes returns null if stats are being generated
+          if (!stats || !Array.isArray(stats)) {
+            console.log(`Stats not ready for ${repo.name}, skipping.`)
+            return
           }
+
+          // Find current user's contribution
+          const userStats = stats.find(
+            (c) => c.author?.login?.toLowerCase() === user.login.toLowerCase()
+          )
+
+          if (userStats && userStats.weeks) {
+            const repoAdditions = userStats.weeks.reduce((sum, w) => sum + (w.a || 0), 0)
+            const repoDeletions = userStats.weeks.reduce((sum, w) => sum + (w.d || 0), 0)
+            totalAdditions += repoAdditions
+            totalDeletions += repoDeletions
+            reposProcessed++
+          }
+        } catch (error) {
+          console.log(`Error processing ${repo.name}:`, error)
         }
+      })
+    )
 
-        return { added: repoAdded, deleted: repoDeleted }
-      } catch {
-        // Skip repos that fail
-        console.log(`Skipping repo ${repo.name}`)
-        return { added: 0, deleted: 0 }
-      }
-    })
-
-    const results = await Promise.all(repoPromises)
-    
-    results.forEach(result => {
-      totalLinesAdded += result.added
-      totalLinesDeleted += result.deleted
-    })
+    await Promise.all(repoPromises)
 
     return NextResponse.json({
       username: user.login,
-      totalLinesAdded,
-      totalLinesDeleted,
-      netLines: totalLinesAdded - totalLinesDeleted,
-      reposAnalyzed: Math.min(repos.length, maxRepos)
+      totalAdditions,
+      totalDeletions,
+      netLines: totalAdditions - totalDeletions,
+      reposAnalyzed: reposProcessed,
+      timestamp: new Date().toISOString(),
     })
-
   } catch (error) {
     console.error("Error fetching GitHub stats:", error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch GitHub stats" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch GitHub stats",
+      },
       { status: 500 }
     )
   }
 }
-

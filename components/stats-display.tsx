@@ -9,10 +9,11 @@ import { ProgressBar } from "./progress-bar"
 
 interface GitHubStats {
   username: string
-  totalLinesAdded: number
-  totalLinesDeleted: number
+  totalAdditions: number
+  totalDeletions: number
   netLines: number
   reposAnalyzed: number
+  timestamp: string
 }
 
 export function StatsDisplay() {
@@ -73,7 +74,7 @@ export function StatsDisplay() {
         <p className="text-2xl font-semibold">You&apos;ve written</p>
       </div>
 
-      <CounterAnimation value={stats.totalLinesAdded} />
+      <CounterAnimation value={stats.totalAdditions} />
 
       <div className="text-center space-y-2">
         <p className="text-3xl font-bold">lines of code!</p>
@@ -82,7 +83,7 @@ export function StatsDisplay() {
         </p>
       </div>
 
-      <ProgressBar value={stats.totalLinesAdded} />
+      <ProgressBar value={stats.totalAdditions} />
 
       <div className="grid grid-cols-2 gap-6 mt-4">
         <motion.div
@@ -93,7 +94,7 @@ export function StatsDisplay() {
         >
           <p className="text-sm text-muted-foreground mb-2">Lines Added</p>
           <p className="text-3xl font-bold text-green-600">
-            +{stats.totalLinesAdded.toLocaleString()}
+            +{stats.totalAdditions.toLocaleString()}
           </p>
         </motion.div>
 
@@ -105,7 +106,7 @@ export function StatsDisplay() {
         >
           <p className="text-sm text-muted-foreground mb-2">Lines Deleted</p>
           <p className="text-3xl font-bold text-red-600">
-            -{stats.totalLinesDeleted.toLocaleString()}
+            -{stats.totalDeletions.toLocaleString()}
           </p>
         </motion.div>
       </div>
