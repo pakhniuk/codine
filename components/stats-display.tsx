@@ -13,6 +13,7 @@ interface GitHubStats {
   totalDeletions: number
   netLines: number
   reposAnalyzed: number
+  reposSkipped: number
   timestamp: string
 }
 
@@ -80,6 +81,9 @@ export function StatsDisplay() {
         <p className="text-3xl font-bold">lines of code!</p>
         <p className="text-muted-foreground">
           Analyzed {stats.reposAnalyzed} repositories
+          {stats.reposSkipped > 0 && (
+            <span className="text-yellow-600"> ({stats.reposSkipped} skipped)</span>
+          )}
         </p>
       </div>
 

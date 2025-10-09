@@ -35,8 +35,8 @@ export async function GET() {
 
           // GitHub sometimes returns null if stats are being generated
           if (!stats || !Array.isArray(stats)) {
-            console.log(`Stats not ready for ${repo.name}, skipping.`)
-            return { additions: 0, deletions: 0 }
+            console.log(`⏭️  Stats not ready for ${repo.name}, skipping.`)
+            return { additions: 0, deletions: 0, skipped: true }
           }
 
           // Find current user's contribution
@@ -47,13 +47,15 @@ export async function GET() {
           if (userStats && userStats.weeks) {
             const repoAdditions = userStats.weeks.reduce((sum, w) => sum + (w.a || 0), 0)
             const repoDeletions = userStats.weeks.reduce((sum, w) => sum + (w.d || 0), 0)
-            return { additions: repoAdditions, deletions: repoDeletions }
+            console.log(`✅ ${repo.name}: +${repoAdditions} -${repoDeletions}`)
+            return { additions: repoAdditions, deletions: repoDeletions, skipped: false }
           }
 
-          return { additions: 0, deletions: 0 }
+          console.log(`❌ ${repo.name}: No user stats found`)
+          return { additions: 0, deletions: 0, skipped: false }
         } catch (error) {
-          console.log(`Error processing ${repo.name}:`, error)
-          return { additions: 0, deletions: 0 }
+          console.log(`⚠️  Error processing ${repo.name}:`, error)
+          return { additions: 0, deletions: 0, skipped: true }
         }
       })
     )
@@ -64,14 +66,24 @@ export async function GET() {
     let totalAdditions = 0
     let totalDeletions = 0
     let reposProcessed = 0
+    let reposSkipped = 0
 
     results.forEach(result => {
-      if (result && result.additions > 0) {
-        totalAdditions += result.additions
-        totalDeletions += result.deletions
-        reposProcessed++
+      if (result) {
+        if (result.skipped) {
+          reposSkipped++
+        } else {
+          // Count repo as processed if it has any additions OR deletions
+          if (result.additions > 0 || result.deletions > 0) {
+            totalAdditions += result.additions
+            totalDeletions += result.deletions
+            reposProcessed++
+          }
+        }
       }
     })
+
+    console.log(`\n📊 FINAL STATS: +${totalAdditions} -${totalDeletions} | Processed: ${reposProcessed} | Skipped: ${reposSkipped}\n`)
 
     return NextResponse.json({
       username: user.login,
@@ -79,6 +91,7 @@ export async function GET() {
       totalDeletions,
       netLines: totalAdditions - totalDeletions,
       reposAnalyzed: reposProcessed,
+      reposSkipped,
       timestamp: new Date().toISOString(),
     })
   } catch (error) {
