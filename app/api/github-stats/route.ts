@@ -24,10 +24,6 @@ export async function GET() {
     const concurrencyLimit = 5
     const limit = pLimit(concurrencyLimit)
 
-    let totalAdditions = 0
-    let totalDeletions = 0
-    let reposProcessed = 0
-
     // --- PROCESS REPOS IN PARALLEL (LIMITED) ---
     const repoPromises = repos.slice(0, maxRepos).map((repo) =>
       limit(async () => {
@@ -40,7 +36,7 @@ export async function GET() {
           // GitHub sometimes returns null if stats are being generated
           if (!stats || !Array.isArray(stats)) {
             console.log(`Stats not ready for ${repo.name}, skipping.`)
-            return
+            return { additions: 0, deletions: 0 }
           }
 
           // Find current user's contribution
@@ -51,17 +47,31 @@ export async function GET() {
           if (userStats && userStats.weeks) {
             const repoAdditions = userStats.weeks.reduce((sum, w) => sum + (w.a || 0), 0)
             const repoDeletions = userStats.weeks.reduce((sum, w) => sum + (w.d || 0), 0)
-            totalAdditions += repoAdditions
-            totalDeletions += repoDeletions
-            reposProcessed++
+            return { additions: repoAdditions, deletions: repoDeletions }
           }
+
+          return { additions: 0, deletions: 0 }
         } catch (error) {
           console.log(`Error processing ${repo.name}:`, error)
+          return { additions: 0, deletions: 0 }
         }
       })
     )
 
-    await Promise.all(repoPromises)
+    const results = await Promise.all(repoPromises)
+
+    // Sum up all results after all promises complete
+    let totalAdditions = 0
+    let totalDeletions = 0
+    let reposProcessed = 0
+
+    results.forEach(result => {
+      if (result && result.additions > 0) {
+        totalAdditions += result.additions
+        totalDeletions += result.deletions
+        reposProcessed++
+      }
+    })
 
     return NextResponse.json({
       username: user.login,
