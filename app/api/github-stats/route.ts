@@ -10,8 +10,29 @@ const MAX_COMMITS_PER_REPO = 500
 const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
 
 // --- CACHE ---
+interface GitHubStatsResult {
+  username: string
+  totalAdditions: number
+  totalDeletions: number
+  netLines: number
+  reposAnalyzed: number
+  reposSkipped: number
+  totalRepos: number
+  repositories: Array<{
+    name: string
+    additions: number
+    deletions: number
+    netLines: number
+    commits: number
+    skipped: boolean
+    url: string
+  }>
+  timestamp: string
+  cached: boolean
+}
+
 interface CacheEntry {
-  data: any
+  data: GitHubStatsResult
   timestamp: number
 }
 
@@ -73,7 +94,7 @@ export async function GET(request: Request) {
 
     const limit = pLimit(CONCURRENCY_LIMIT)
 
-    async function fetchAllTimeStats(repo: any) {
+    async function fetchAllTimeStats(repo: { name: string; owner: { login: string }; html_url: string }) {
       try {
         console.log(`📊 Fetching all commits for ${repo.name}...`)
         
@@ -161,8 +182,9 @@ export async function GET(request: Request) {
         )
 
         return { additions: totalAdditions, deletions: totalDeletions, commits: processedCommits }
-      } catch (error: any) {
-        console.log(`⚠️  Error fetching ${repo.name}: ${error.message || error}`)
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.log(`⚠️  Error fetching ${repo.name}: ${errorMessage}`)
         return { additions: 0, deletions: 0, commits: 0 }
       }
     }
